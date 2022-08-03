@@ -1,0 +1,54 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum AuthenticationType {
+  EMAIL
+  TEL
+}
+
+model User {
+  id String @id
+  authenticationType AuthenticationType @default(EMAIL)
+  email String? @unique 
+  tel String? @unique
+  password String @db.VarChar(255)
+  isVerified Boolean @default(false)
+  passwordUpdateVersion Int @default(0)
+  otps Otp?
+  blockings Blocking?
+
+  @@index([email, tel])
+  @@map("users")
+}
+
+model Otp {
+  user User @relation(fields: [userId], references: [id])
+  userId String @unique
+  signupOtp String? @db.Char(6)
+  signupExpiredAt DateTime?
+  resetPasswordOtp String? @db.Char(6)
+  resetPaswordExpiredAt DateTime?
+
+  @@map("otps")
+}
+
+model Blocking {
+  user User @relation(fields: [userId], references: [id])
+  userId String @unique
+  unblockSigninOtp String? @db.Char(6)
+  unblockSigninOtpExpiredAt DateTime?
+  enteredWrongPasswordTime Int @default(0)
+  isBlocked Boolean @default(false)
+  blockedUntil DateTime?
+
+  @@map("blockings")
+}
