@@ -8,8 +8,18 @@ import {
     verifyAccountController,
     getProfileController,
     changePasswordController,
+    resetPasswordSendOtpController,
+    resetPasswordController
 } from "../controllers/auth";
-import { signupValidator, sendOtpAgainValidator, verifyAccountValidator, signInValidator, changePasswordValidator } from "../validations/auth";
+import {
+    signupValidator,
+    sendOtpAgainValidator,
+    verifyAccountValidator,
+    signInValidator,
+    changePasswordValidator,
+    resetPasswordSendOtpValidator,
+    resetPasswordValidator,
+} from "../validations/auth";
 import setRateLimit from "../services/rateLimit";
 import authorizedMiddleware from "../services/authorizedMiddleware";
 
@@ -41,12 +51,14 @@ router.post(
     signInController
 );
 
-router.put("/logout", authorizedMiddleware, logoutController)
+router.put("/logout", authorizedMiddleware, logoutController);
 
 router.get("/profile", authorizedMiddleware, getProfileController);
 
 router.put("/password/change", authorizedMiddleware, changePasswordValidator, changePasswordController);
 
-router.put("/password/reset");
+router.put("/password/reset/otp", setRateLimit(60, 180, "Too many send otp. Please try again later."), resetPasswordSendOtpValidator, resetPasswordSendOtpController);
+
+router.put("/password/reset", setRateLimit(60, 180, "Too many reset password. Please try again later."), resetPasswordValidator, resetPasswordController);
 
 export default router;

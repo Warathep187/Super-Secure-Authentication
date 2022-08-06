@@ -34,3 +34,25 @@ export interface changePasswordInput {
     newPassword: string;
     confirmNewPassword: string;
 }
+
+export interface resetPasswordSendOtpInput {
+    authenticatedBy: string;
+}
+
+export interface resetPasswordSendOtpBody {
+    authenticatedBy: string;
+    type: AuthenticationType;
+}
+
+export interface resetPasswordInput {
+    token: string;
+    otp: string;
+    password: string;
+    confirmPassword: string;
+}
+
+export interface resetPasswordBody {
+    userId: string;
+    otp: string;
+    password: string;
+}

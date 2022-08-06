@@ -1,5 +1,13 @@
-import { Request, Response } from "express";
-import { AuthenticationType, SignupInput, verificationBody, SignInBody, changePasswordInput } from "../types/auth";
+import { query, Request, Response } from "express";
+import {
+    AuthenticationType,
+    SignupInput,
+    verificationBody,
+    SignInBody,
+    changePasswordInput,
+    resetPasswordSendOtpBody,
+    resetPasswordBody,
+} from "../types/auth";
 import AWS from "aws-sdk";
 import jwt from "jsonwebtoken";
 import ObjectId from "bson-objectid";
@@ -8,6 +16,7 @@ import prismaClient from "../services/mysql";
 import { randomInteger } from "../utils/utilityFunctions";
 import { createEmailParams, createSmsParams, EmailSendingTypes, SmsMessagingTypes } from "../utils/awsParams";
 import { addTokenToWhiteList, removeTokenFromWhiteList, removeAllTokenFromWhiteList } from "../services/redisActions";
+import { Prisma } from "@prisma/client";
 AWS.config.update({ region: "us-east-1" });
 
 const SES = new AWS.SES({ apiVersion: "2010-12-01" });
@@ -392,53 +401,185 @@ export const signInController = async (req: Request, res: Response) => {
     try {
         const { authenticatedBy, type, password } = req.body as SignInBody;
 
+        let queryConditionObj: Prisma.UserWhereInput;
         if (type === AuthenticationType.EMAIL) {
-            const user = await prismaClient.user.findFirst({
-                where: {
-                    email: authenticatedBy,
-                    isVerified: true,
-                },
-                select: {
-                    id: true,
-                    password: true,
-                    passwordUpdateVersion: true,
-                },
-            });
-            if (!user) {
-                return res.status(400).send({
-                    message: "Email does not exist",
-                });
-            }
+            queryConditionObj = {
+                email: authenticatedBy,
+                isVerified: true,
+            };
+        } else {
+            queryConditionObj = {
+                tel: authenticatedBy,
+                isVerified: true,
+            };
+        }
 
+        const user = await prismaClient.user.findFirst({
+            where: queryConditionObj,
+            select: {
+                id: true,
+                password: true,
+                passwordUpdateVersion: true,
+                blockings: {
+                    select: {
+                        blockedUntil: true,
+                        enteredWrongPasswordTime: true,
+                        isBlocked: true,
+                    },
+                },
+            },
+        });
+        if (!user) {
+            return res.status(400).send({
+                message: "Account does not exist",
+            });
+        }
+
+        if (user.blockings?.isBlocked) {
+            const now = new Date();
+            const blockedUntil = new Date(user.blockings.blockedUntil!);
+            if (now < blockedUntil) {
+                res.status(403).send({
+                    message: "Your account is blocked. Please wait.",
+                });
+            } else {
+                const isMatch = await comparePassword(user.password, password);
+                if (!isMatch) {
+                    if (user.blockings?.enteredWrongPasswordTime === 5) {
+                        res.status(403).send({
+                            message: "Your has entered wrong password many time. Your account is blocked, please wait.",
+                        });
+                        const blockedUntil = new Date();
+                        blockedUntil.setMinutes(blockedUntil.getMinutes() + 10);
+                        await prismaClient.blocking.update({
+                            where: {
+                                userId: user.id,
+                            },
+                            data: {
+                                enteredWrongPasswordTime: 0,
+                                isBlocked: true,
+                                blockedUntil,
+                            },
+                        });
+                    } else {
+                        res.status(400).send({
+                            message: "Password is incorrect",
+                        });
+                        await prismaClient.blocking.update({
+                            where: {
+                                userId: user.id,
+                            },
+                            data: {
+                                enteredWrongPasswordTime: {
+                                    increment: 1,
+                                },
+                                blockedUntil: null
+                            },
+                        });
+                    }
+                } else {
+                    const token = jwt.sign(
+                        { userId: user.id, version: user.passwordUpdateVersion },
+                        process.env.JWT_AUTHORIZATION_KEY!,
+                        {
+                            expiresIn: "1d",
+                        }
+                    );
+                    const refreshToken = jwt.sign(
+                        {
+                            userId: user.id,
+                        },
+                        process.env.JWT_REFRESH_TOKEN_KEY!,
+                        {
+                            expiresIn: "7d",
+                        }
+                    );
+                    res.status(202).send({
+                        token,
+                        refreshToken,
+                        userId: user.id,
+                    });
+                    await addTokenToWhiteList(user.id, token);
+                    await prismaClient.blocking.update({
+                        where: {
+                            userId: user.id,
+                        },
+                        data: {
+                            enteredWrongPasswordTime: 0,
+                            blockedUntil: null,
+                            isBlocked: false
+                        },
+                    });
+                }
+            }
+        } else {
             const isMatch = await comparePassword(user.password, password);
             if (!isMatch) {
-                return res.status(400).send({
-                    message: "Password is incorrect",
+                if (user.blockings?.enteredWrongPasswordTime === 5) {
+                    res.status(403).send({
+                        message: "Your has entered wrong password many time. Your account is blocked, please wait.",
+                    });
+                    const blockedUntil = new Date();
+                    blockedUntil.setMinutes(blockedUntil.getMinutes() + 10);
+                    await prismaClient.blocking.update({
+                        where: {
+                            userId: user.id,
+                        },
+                        data: {
+                            enteredWrongPasswordTime: 0,
+                            isBlocked: true,
+                            blockedUntil,
+                        },
+                    });
+                } else {
+                    res.status(400).send({
+                        message: "Password is incorrect",
+                    });
+                    await prismaClient.blocking.update({
+                        where: {
+                            userId: user.id,
+                        },
+                        data: {
+                            enteredWrongPasswordTime: {
+                                increment: 1,
+                            },
+                        },
+                    });
+                }
+            } else {
+                const token = jwt.sign(
+                    { userId: user.id, version: user.passwordUpdateVersion },
+                    process.env.JWT_AUTHORIZATION_KEY!,
+                    {
+                        expiresIn: "1d",
+                    }
+                );
+                const refreshToken = jwt.sign(
+                    {
+                        userId: user.id,
+                    },
+                    process.env.JWT_REFRESH_TOKEN_KEY!,
+                    {
+                        expiresIn: "7d",
+                    }
+                );
+                res.status(202).send({
+                    token,
+                    refreshToken,
+                    userId: user.id,
+                });
+                await addTokenToWhiteList(user.id, token);
+                await prismaClient.blocking.update({
+                    where: {
+                        userId: user.id,
+                    },
+                    data: {
+                        enteredWrongPasswordTime: 0,
+                        blockedUntil: null,
+                        isBlocked: false
+                    },
                 });
             }
-            const token = jwt.sign(
-                { userId: user.id, version: user.passwordUpdateVersion },
-                process.env.JWT_AUTHORIZATION_KEY!,
-                {
-                    expiresIn: "1d",
-                }
-            );
-            const refreshToken = jwt.sign(
-                {
-                    userId: user.id,
-                },
-                process.env.JWT_REFRESH_TOKEN_KEY!,
-                {
-                    expiresIn: "7d",
-                }
-            );
-            res.status(202).send({
-                token,
-                refreshToken,
-                userId: user.id,
-            });
-            await addTokenToWhiteList(user.id, token);
-        } else {
         }
     } catch (e) {
         res.status(500).send({
@@ -538,6 +679,204 @@ export const changePasswordController = async (req: Request, res: Response) => {
         await removeAllTokenFromWhiteList(userId);
     } catch (e) {
         console.log(e);
+        res.status(500).send({
+            message: "Something went wrong",
+        });
+    }
+};
+
+export const resetPasswordSendOtpController = async (req: Request, res: Response) => {
+    try {
+        const { authenticatedBy, type } = req.body as resetPasswordSendOtpBody;
+
+        if (type === AuthenticationType.EMAIL) {
+            const user = await prismaClient.user.findFirst({
+                where: {
+                    email: authenticatedBy,
+                    isVerified: true,
+                },
+                select: {
+                    id: true,
+                },
+            });
+
+            if (!user) {
+                return res.status(400).send({
+                    message: "Account not found",
+                });
+            }
+
+            const otp = randomInteger(100000, 999999).toString();
+            const otpExpiredAt = new Date();
+            otpExpiredAt.setMinutes(otpExpiredAt.getMinutes() + 10);
+
+            await prismaClient.otp.update({
+                where: {
+                    userId: user.id,
+                },
+                data: {
+                    resetPasswordOtp: otp,
+                    resetPasswordExpiredAt: otpExpiredAt,
+                },
+            });
+
+            const token = jwt.sign(
+                {
+                    userId: user.id,
+                },
+                process.env.JWT_RESET_PASSWORD_KEY!,
+                {
+                    expiresIn: "10m",
+                }
+            );
+
+            const params = createEmailParams({
+                type: EmailSendingTypes.RESET_PASSWORD,
+                email: authenticatedBy,
+                otp,
+            });
+            SES.sendEmail(params, (err) => {
+                if (err) {
+                    return res.status(500).send({
+                        message: "Could not send OTP to your email",
+                    });
+                }
+                res.status(202).send({
+                    message: "Please check your email to reset your password",
+                    token,
+                });
+            });
+        } else {
+            const user = await prismaClient.user.findFirst({
+                where: {
+                    tel: authenticatedBy,
+                    isVerified: true,
+                },
+                select: {
+                    id: true,
+                },
+            });
+
+            if (!user) {
+                return res.status(400).send({
+                    message: "Account not found",
+                });
+            }
+
+            const otp = randomInteger(100000, 999999).toString();
+            const otpExpiredAt = new Date();
+            otpExpiredAt.setMinutes(otpExpiredAt.getMinutes() + 10);
+
+            await prismaClient.otp.update({
+                where: {
+                    userId: user.id,
+                },
+                data: {
+                    resetPasswordOtp: otp,
+                    resetPasswordExpiredAt: otpExpiredAt,
+                },
+            });
+
+            const token = jwt.sign(
+                {
+                    userId: user.id,
+                },
+                process.env.JWT_RESET_PASSWORD_KEY!,
+                {
+                    expiresIn: "10m",
+                }
+            );
+            const params = createSmsParams({
+                type: SmsMessagingTypes.RESET_PASSWORD,
+                otp,
+                rawTel: authenticatedBy,
+            });
+            SNS.publish(params, (err) => {
+                if (err) {
+                    return res.status(500).send({
+                        message: "Could not send OTP to your phone number",
+                    });
+                }
+                res.status(202).send({
+                    message: "Please check your phone to reset your password",
+                    token,
+                });
+            });
+        }
+    } catch (e) {
+        res.status(500).send({
+            message: "Something went wrong",
+        });
+    }
+};
+
+export const resetPasswordController = async (req: Request, res: Response) => {
+    try {
+        const { userId, otp, password } = req.body as resetPasswordBody;
+
+        const user = await prismaClient.user.findUnique({
+            where: {
+                id: userId,
+            },
+            select: {
+                id: true,
+                otps: {
+                    select: {
+                        resetPasswordOtp: true,
+                        resetPasswordExpiredAt: true,
+                    },
+                },
+            },
+        });
+
+        if (!user) {
+            return res.status(404).send({
+                message: "Account not found",
+            });
+        }
+        if (otp !== user.otps?.resetPasswordOtp) {
+            return res.status(400).send({
+                message: "OTP is incorrect",
+            });
+        }
+
+        const now = new Date();
+        if (new Date(user.otps.resetPasswordExpiredAt!) < now) {
+            res.status(400).send({
+                message: "OTP has already expired",
+            });
+        } else {
+            const hashedPassword = await hashPassword(password);
+
+            await prismaClient.user.update({
+                where: {
+                    id: userId,
+                },
+                data: {
+                    password: hashedPassword,
+                    passwordUpdateVersion: {
+                        increment: 1,
+                    },
+                },
+            });
+
+            res.status(202).send({
+                message: "Password has been reset. Let's login!!",
+            });
+
+            await removeAllTokenFromWhiteList(userId);
+        }
+
+        await prismaClient.otp.update({
+            where: {
+                userId,
+            },
+            data: {
+                resetPasswordOtp: null,
+                resetPasswordExpiredAt: null,
+            },
+        });
+    } catch (e) {
         res.status(500).send({
             message: "Something went wrong",
         });

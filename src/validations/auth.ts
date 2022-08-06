@@ -1,5 +1,13 @@
 import { Request, Response, NextFunction } from "express";
-import { AuthenticationType, SignInInput, SignupInput, verificationInput, changePasswordInput } from "../types/auth";
+import {
+    AuthenticationType,
+    SignInInput,
+    SignupInput,
+    verificationInput,
+    changePasswordInput,
+    resetPasswordInput,
+    resetPasswordSendOtpInput,
+} from "../types/auth";
 import { emailRegex, thailandTelRegex } from "../utils/regex";
 import jwt from "jsonwebtoken";
 
@@ -117,71 +125,93 @@ export const verifyAccountValidator = (req: Request, res: Response, next: NextFu
 
 export const signInValidator = (req: Request, res: Response, next: NextFunction) => {
     try {
-        const {authenticatedBy, password} = req.body as SignInInput;
-        if(emailRegex.test(authenticatedBy)) {
-            if(!password || password.trim() === "") {
+        const { authenticatedBy, password } = req.body as SignInInput;
+        if (emailRegex.test(authenticatedBy)) {
+            if (!password || password.trim() === "") {
                 res.status(400).send({
-                    message: "Password must be provided"
-                })
-            } else if(password.trim().length < 8) {
+                    message: "Password must be provided",
+                });
+            } else if (password.trim().length < 8) {
                 res.status(400).send({
-                    message: "Password must be at least 8 characters"
-                })
+                    message: "Password must be at least 8 characters",
+                });
             } else {
                 req.body.type = AuthenticationType.EMAIL;
                 next();
             }
-        } else if(thailandTelRegex.test(authenticatedBy)) {
-            if(!password || password.trim() === "") {
+        } else if (thailandTelRegex.test(authenticatedBy)) {
+            if (!password || password.trim() === "") {
                 res.status(400).send({
-                    message: "Password must be provided"
-                })
-            } else if(password.trim().length < 8) {
+                    message: "Password must be provided",
+                });
+            } else if (password.trim().length < 8) {
                 res.status(400).send({
-                    message: "Password must be at least 8 characters"
-                })
+                    message: "Password must be at least 8 characters",
+                });
             } else {
                 req.body.type = AuthenticationType.TEL;
                 next();
             }
         } else {
             res.status(400).send({
-                message: "Invalid email or tel."
-            })
+                message: "Invalid email or tel.",
+            });
         }
-    }catch(e) {
+    } catch (e) {
         res.status(500).send({
-            message: "Something went wrong"
-        })
+            message: "Something went wrong",
+        });
     }
-}
+};
 
 export const changePasswordValidator = (req: Request, res: Response, next: NextFunction) => {
     try {
-        const {oldPassword, newPassword, confirmNewPassword} = req.body as changePasswordInput;
+        const { oldPassword, newPassword, confirmNewPassword } = req.body as changePasswordInput;
 
-        if(!oldPassword || oldPassword.trim() === "") {
+        if (!oldPassword || oldPassword.trim() === "") {
             res.status(400).send({
-                message: "Old password must be provided"
-            })
-        } else if(oldPassword.trim().length < 8) {
+                message: "Old password must be provided",
+            });
+        } else if (oldPassword.trim().length < 8) {
             res.status(400).send({
-                message: "Password must be at least 8 characters"
-            })
-        } else if(!newPassword || newPassword.trim() === "") {
+                message: "Password must be at least 8 characters",
+            });
+        } else if (!newPassword || newPassword.trim() === "") {
             res.status(400).send({
-                message: "New password must be provided"
-            })
-        } else if(newPassword.trim().length < 8) {
+                message: "New password must be provided",
+            });
+        } else if (newPassword.trim().length < 8) {
             res.status(400).send({
-                message: "Password must be at least 8 characters"
-            })
-        } else if(newPassword !== confirmNewPassword) {
+                message: "Password must be at least 8 characters",
+            });
+        } else if (newPassword !== confirmNewPassword) {
             res.status(400).send({
-                message: "Password does not match"
-            })
+                message: "Password does not match",
+            });
         } else {
             next();
+        }
+    } catch (e) {
+        res.status(500).send({
+            message: "Something went wrong",
+        });
+    }
+};
+
+export const resetPasswordSendOtpValidator = (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const {authenticatedBy} = req.body as resetPasswordSendOtpInput;
+
+        if(emailRegex.test(authenticatedBy)) {
+            req.body.type = AuthenticationType.EMAIL;
+            next();
+        } else if(thailandTelRegex.test(authenticatedBy)) {
+            req.body.type = AuthenticationType.TEL;
+            next();
+        } else {
+            res.status(400).send({
+                message: "Invalid authentication type"
+            })
         }
     }catch(e) {
         res.status(500).send({
@@ -189,3 +219,47 @@ export const changePasswordValidator = (req: Request, res: Response, next: NextF
         })
     }
 }
+
+export const resetPasswordValidator = (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { token, otp, password, confirmPassword } = req.body as resetPasswordInput;
+
+        if (!token) {
+        } else if (!password || password.trim() === "") {
+            res.status(400).send({
+                message: "Password must be provided",
+            });
+        } else if (password.trim().length < 8) {
+            res.status(400).send({
+                message: "Password must be at least 8 characters",
+            });
+        } else if (password !== confirmPassword) {
+            res.status(400).send({
+                message: "Password does not match",
+            });
+        } else if(Number.isNaN(otp)) {
+            res.status(400).send({
+                message: "OTP is invalid",
+            });
+        } else if(+otp < 100000 || +otp > 999999) {
+            res.status(400).send({
+                message: "OTP is invalid",
+            });
+        } else {
+            jwt.verify(token, process.env.JWT_RESET_PASSWORD_KEY!, (err, result) => {
+                if(err) {
+                    return res.status(400).send({
+                        message: "Reset password token is invalid or expired"
+                    })
+                }
+                const {userId} = result as {userId: string};
+                req.body.userId = userId;
+                next();
+            })
+        }
+    } catch (e) {
+        res.status(500).send({
+            message: "Something went wrong",
+        });
+    }
+};

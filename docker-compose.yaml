@@ -1,0 +1,41 @@
+version: '3.9'
+
+services:
+  mysql: 
+    image: mysql
+    port:
+      - 3306:3306
+    volumes:
+      - apps/mysql:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=1234
+      - MYSQL_PASSWORD=1234
+      - MYSQL_USER=root
+      - MYSQL_DATABASE=super_secure_authentication
+    container_name: mysql
+  redis:
+    image: redis
+    port:
+      - 6379:6379
+    volumes:
+      - apps/redis:/data
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    container_name: redis
+  server:
+    image: "warathep187/super_secure_authentication"
+    ports:
+      - 80:8000
+    container_name: server
+    environment:
+      - EMAIL=warathep187@gmail.com
+      - JWT_SIGNUP_KEY=90f52d2ed28c49729df2c2b323a3d5ad
+      - JWT_AUTHORIZATION_KEY=4694a0aa9ba14beb866bd2a882dd196a
+      - JWT_REFRESH_TOKEN_KEY=459416373e8e49ed92e33e6579ba5cf0
+      - JWT_RESET_PASSWORD_KEY=54d91cf91aa844268cf46c6f7674594f
+      - DATABASE_URL="mysql://root:1234@mysql/super_secure_authentication?schema=public"
+      - REDIS_URL=redis://redis:6379
+
+volumes:
+  apps/mysql:
+  apps/redis:

@@ -36,7 +36,7 @@ model Otp {
   signupOtp String? @db.Char(6)
   signupExpiredAt DateTime?
   resetPasswordOtp String? @db.Char(6)
-  resetPaswordExpiredAt DateTime?
+  resetPasswordExpiredAt DateTime?
 
   @@map("otps")
 }
@@ -44,8 +44,6 @@ model Otp {
 model Blocking {
   user User @relation(fields: [userId], references: [id])
   userId String @unique
-  unblockSigninOtp String? @db.Char(6)
-  unblockSigninOtpExpiredAt DateTime?
   enteredWrongPasswordTime Int @default(0)
   isBlocked Boolean @default(false)
   blockedUntil DateTime?
