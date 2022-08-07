@@ -473,7 +473,7 @@ export const signInController = async (req: Request, res: Response) => {
                                 enteredWrongPasswordTime: {
                                     increment: 1,
                                 },
-                                blockedUntil: null
+                                blockedUntil: null,
                             },
                         });
                     }
@@ -507,7 +507,7 @@ export const signInController = async (req: Request, res: Response) => {
                         data: {
                             enteredWrongPasswordTime: 0,
                             blockedUntil: null,
-                            isBlocked: false
+                            isBlocked: false,
                         },
                     });
                 }
@@ -576,15 +576,50 @@ export const signInController = async (req: Request, res: Response) => {
                     data: {
                         enteredWrongPasswordTime: 0,
                         blockedUntil: null,
-                        isBlocked: false
+                        isBlocked: false,
                     },
                 });
             }
         }
     } catch (e) {
+        console.log(e);
         res.status(500).send({
             message: "Something went wrong",
         });
+    }
+};
+
+export const refreshTokenController = async (req: Request, res: Response) => {
+    try {
+        const userId = req.body.userId as string;
+
+        const user = await prismaClient.user.findUnique({
+            where: {
+                id: userId,
+            },
+            select: {
+                id: true,
+                passwordUpdateVersion: true,
+            },
+        });
+        const token = jwt.sign(
+            {
+                userId: user?.id,
+                version: user?.passwordUpdateVersion,
+            },
+            process.env.JWT_AUTHORIZATION_KEY!,
+            {
+                expiresIn: "1d",
+            }
+        );
+
+        res.send({
+            token
+        })
+    } catch (e) {
+        res.status(500).send({
+            message: "Something went wrong"
+        })
     }
 };
 

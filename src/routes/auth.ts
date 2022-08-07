@@ -2,6 +2,7 @@ import { Router } from "express";
 const router = Router();
 import {
     signInController,
+    refreshTokenController,
     logoutController,
     signupController,
     sendOtpAgainController,
@@ -21,7 +22,7 @@ import {
     resetPasswordValidator,
 } from "../validations/auth";
 import setRateLimit from "../services/rateLimit";
-import authorizedMiddleware from "../services/authorizedMiddleware";
+import {authorizedMiddleware, verifyRefreshTokenMiddleware} from "../services/middlewares";
 
 router.post(
     "/signup",
@@ -50,6 +51,8 @@ router.post(
     signInValidator,
     signInController
 );
+
+router.get("/refresh-token", authorizedMiddleware, verifyRefreshTokenMiddleware, refreshTokenController);
 
 router.put("/logout", authorizedMiddleware, logoutController);
 

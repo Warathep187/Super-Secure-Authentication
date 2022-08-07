@@ -1,6 +1,6 @@
-import e, { Request, Response, NextFunction } from "express";
-import { addTokenToWhiteList, checkTokenFromWhiteList, removeTokenFromWhiteList } from "../services/redisActions";
-import prismaClient from "../services/mysql";
+import { Request, Response, NextFunction } from "express";
+import { addTokenToWhiteList, checkTokenFromWhiteList, removeTokenFromWhiteList } from "./redisActions";
+import prismaClient from "./mysql";
 import jwt from "jsonwebtoken";
 
 interface JwtAuthorizationResult extends jwt.JwtPayload {
@@ -18,7 +18,7 @@ declare global {
     }
 }
 
-const authorizedMiddleware = (req: Request, res: Response, next: NextFunction) => {
+export const authorizedMiddleware = (req: Request, res: Response, next: NextFunction) => {
     try {
         const token = req.headers.authorization;
         if (!token) {
@@ -71,4 +71,25 @@ const authorizedMiddleware = (req: Request, res: Response, next: NextFunction) =
     }
 };
 
-export default authorizedMiddleware;
+export const verifyRefreshTokenMiddleware = (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const refreshToken = req.headers.refreshtoken as string;
+
+        if (!refreshToken) {
+            return res.status(401).send();
+        }
+
+        jwt.verify(refreshToken, process.env.JWT_REFRESH_TOKEN_KEY!, (err, result) => {
+            if (err) {
+                return res.status(401).send();
+            }
+            const { userId } = result as { userId: string };
+            req.body.userId = userId;
+            next();
+        });
+    } catch (e) {
+        res.status(500).send({
+            message: "Something went wrong",
+        });
+    }
+};

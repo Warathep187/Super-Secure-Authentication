@@ -3,22 +3,19 @@ version: '3.9'
 services:
   mysql: 
     image: mysql
-    port:
+    ports:
       - 3306:3306
     volumes:
-      - apps/mysql:/var/lib/mysql
+      - mysql:/var/lib/mysql
     environment:
       - MYSQL_ROOT_PASSWORD=1234
-      - MYSQL_PASSWORD=1234
-      - MYSQL_USER=root
-      - MYSQL_DATABASE=super_secure_authentication
     container_name: mysql
   redis:
     image: redis
-    port:
+    ports:
       - 6379:6379
     volumes:
-      - apps/redis:/data
+      - redis:/data
     environment:
       - ALLOW_EMPTY_PASSWORD=yes
     container_name: redis
@@ -26,6 +23,8 @@ services:
     image: "warathep187/super_secure_authentication"
     ports:
       - 80:8000
+    volumes:
+      - server:/server/data
     container_name: server
     environment:
       - EMAIL=warathep187@gmail.com
@@ -37,5 +36,6 @@ services:
       - REDIS_URL=redis://redis:6379
 
 volumes:
-  apps/mysql:
-  apps/redis:
+  mysql:
+  redis:
+  server:
