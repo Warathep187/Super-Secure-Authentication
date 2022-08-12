@@ -12,6 +12,7 @@ services:
     container_name: mysql
   redis:
     image: redis
+
     ports:
       - 6379:6379
     volumes:
@@ -32,8 +33,10 @@ services:
       - JWT_AUTHORIZATION_KEY=4694a0aa9ba14beb866bd2a882dd196a
       - JWT_REFRESH_TOKEN_KEY=459416373e8e49ed92e33e6579ba5cf0
       - JWT_RESET_PASSWORD_KEY=54d91cf91aa844268cf46c6f7674594f
-      - DATABASE_URL="mysql://root:1234@mysql/super_secure_authentication?schema=public"
       - REDIS_URL=redis://redis:6379
+    depends_on:
+      - mysql
+      - redis
 
 volumes:
   mysql:

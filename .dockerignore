@@ -1,6 +1,7 @@
-/node_modules
+node_modules
+.git
 .gitignore
-.env
-.docker-compose
+docker-compose.yaml
 tsconfig.json
-/src
+src
+*.pem
